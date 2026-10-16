@@ -2,7 +2,7 @@
   "mcpServers": {
     "growblocks": {
       "command": "npx",
-      "args": ["-y", "growblocks@latest", "mcp"]
+      "args": ["-y", "growblocks@1.2.0", "mcp"]
     }
   }
 }

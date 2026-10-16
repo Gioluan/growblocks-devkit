@@ -48,7 +48,7 @@ Money (collections, the coin, earnings) never goes through the assistant: it sta
 
 ## Layout
 - `.claude-plugin/marketplace.json`: this repo as a Claude Code plugin marketplace
-- `plugins/growblocks/`: the plugin (`.mcp.json` runs `npx growblocks@latest mcp`, plus the `growblocks-game` skill)
+- `plugins/growblocks/`: the plugin (`.mcp.json` runs `npx growblocks@1.2.0 mcp`, plus the `growblocks-game` skill)
 - `desktop/`: the Claude Desktop extension; build it with `npx @anthropic-ai/mcpb pack desktop growblocks.mcpb`
 - `server.json`: the entry for the official MCP Registry
 - `TERMS.md`: the Dev Kit terms

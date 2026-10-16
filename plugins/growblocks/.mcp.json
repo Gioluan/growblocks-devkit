@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "growblocks": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/server/growblocks.mjs", "mcp"]
+      "command": "npx",
+      "args": ["-y", "growblocks@1.2.0", "mcp"]
     }
   }
 }

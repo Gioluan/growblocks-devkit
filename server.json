@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "xyz.growblocks/growblocks",
+  "title": "GrowBlocks Dev Kit",
+  "description": "Build, play-test with screenshots, and ship three.js browser games on GrowBlocks.",
+  "version": "1.2.0",
+  "websiteUrl": "https://growblocks.xyz/devkit.html",
+  "repository": {
+    "url": "https://github.com/Gioluan/growblocks-devkit",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "growblocks",
+      "version": "1.2.0",
+      "transport": { "type": "stdio" },
+      "packageArguments": [
+        { "type": "positional", "value": "mcp" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "growblocks",
+  "owner": {
+    "name": "GrowBlocks",
+    "url": "https://growblocks.xyz"
+  },
+  "metadata": {
+    "description": "Build, check and ship browser games on GrowBlocks from Claude Code.",
+    "version": "1.2.0"
+  },
+  "plugins": [
+    {
+      "name": "growblocks",
+      "source": "./plugins/growblocks",
+      "description": "GrowBlocks Dev Kit: write a three.js game, play it headless with a screenshot, add community blocks and push a test build, all from Claude Code.",
+      "version": "1.2.0",
+      "category": "development",
+      "keywords": ["game", "gamedev", "threejs", "browser-game", "multiplayer", "mcp"],
+      "homepage": "https://growblocks.xyz/devkit.html"
+    }
+  ]
+}

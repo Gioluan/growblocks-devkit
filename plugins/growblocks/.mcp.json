@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "growblocks": {
+      "command": "npx",
+      "args": ["-y", "growblocks@latest", "mcp"]
+    }
+  }
+}

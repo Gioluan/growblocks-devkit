@@ -1,0 +1,127 @@
+{
+ "manifest_version": "0.3",
+ "name": "growblocks",
+ "display_name": "GrowBlocks Dev Kit",
+ "version": "1.2.0",
+ "description": "Build, play-test with screenshots, and ship three.js browser games on GrowBlocks.",
+ "long_description": "Write a GrowBlocks game with Claude: read the Dev Kit API, play the game headless and see a screenshot after every change, reuse community blocks, and push an unlisted test build. Submitting for review only happens when you ask.",
+ "author": {
+  "name": "GrowBlocks",
+  "url": "https://growblocks.xyz"
+ },
+ "homepage": "https://growblocks.xyz/devkit.html",
+ "documentation": "https://growblocks.xyz/devkit/guide.html",
+ "icon": "icon.png",
+ "server": {
+  "type": "node",
+  "entry_point": "growblocks.mjs",
+  "mcp_config": {
+   "command": "node",
+   "args": [
+    "${__dirname}/growblocks.mjs",
+    "mcp"
+   ],
+   "env": {}
+  }
+ },
+ "tools": [
+  {
+   "name": "growblocks_docs",
+   "description": "Read the Dev Kit API"
+  },
+  {
+   "name": "growblocks_check",
+   "description": "Check and play the game"
+  },
+  {
+   "name": "growblocks_whoami",
+   "description": "Who is signed in"
+  },
+  {
+   "name": "growblocks_login",
+   "description": "Sign in to GrowBlocks"
+  },
+  {
+   "name": "growblocks_games",
+   "description": "List my games"
+  },
+  {
+   "name": "growblocks_status",
+   "description": "Game status and review note"
+  },
+  {
+   "name": "growblocks_create_game",
+   "description": "Create a game on GrowBlocks"
+  },
+  {
+   "name": "growblocks_link_game",
+   "description": "Link folder to a game"
+  },
+  {
+   "name": "growblocks_update_game",
+   "description": "Change game details"
+  },
+  {
+   "name": "growblocks_push",
+   "description": "Upload a test build"
+  },
+  {
+   "name": "growblocks_submit",
+   "description": "Submit for review"
+  },
+  {
+   "name": "growblocks_blocks",
+   "description": "Search blocks"
+  },
+  {
+   "name": "growblocks_block_info",
+   "description": "Block details"
+  },
+  {
+   "name": "growblocks_add_block",
+   "description": "Add a block to the game"
+  },
+  {
+   "name": "growblocks_publish_block",
+   "description": "Publish a block publicly"
+  },
+  {
+   "name": "growblocks_new_game",
+   "description": "New game folder"
+  }
+ ],
+ "prompts": [
+  {
+   "name": "make_game",
+   "description": "Make a GrowBlocks game from an idea",
+   "arguments": [
+    "idea",
+    "folder"
+   ],
+   "text": "Make a GrowBlocks Dev Kit game: ${arguments.idea}"
+  },
+  {
+   "name": "ship_game",
+   "description": "Check and upload a test build",
+   "text": "Ship the GrowBlocks game in this folder."
+  }
+ ],
+ "keywords": [
+  "game",
+  "gamedev",
+  "threejs",
+  "browser-game",
+  "multiplayer"
+ ],
+ "license": "SEE LICENSE IN TERMS.md",
+ "compatibility": {
+  "platforms": [
+   "darwin",
+   "win32",
+   "linux"
+  ],
+  "runtimes": {
+   "node": ">=18.0.0"
+  }
+ }
+}

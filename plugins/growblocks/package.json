@@ -1,0 +1,8 @@
+{
+  "name": "growblocks-plugin",
+  "private": true,
+  "description": "Pins the GrowBlocks MCP server that .mcp.json runs.",
+  "dependencies": {
+    "growblocks": "1.2.0"
+  }
+}

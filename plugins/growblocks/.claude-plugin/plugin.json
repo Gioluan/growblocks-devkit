@@ -8,5 +8,15 @@
   },
   "homepage": "https://growblocks.xyz/devkit.html",
   "repository": "https://github.com/Gioluan/growblocks-devkit",
-  "keywords": ["game", "gamedev", "threejs", "browser-game", "multiplayer", "mcp"]
+  "keywords": [
+    "game",
+    "gamedev",
+    "threejs",
+    "browser-game",
+    "multiplayer",
+    "mcp"
+  ],
+  "documentationUrl": "https://growblocks.xyz/devkit/guide.html",
+  "supportUrl": "https://github.com/Gioluan/growblocks-devkit/issues",
+  "termsOfServiceUrl": "https://github.com/Gioluan/growblocks-devkit/blob/main/TERMS.md"
 }

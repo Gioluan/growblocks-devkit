@@ -9,17 +9,26 @@
 //   node growblocks.mjs create <address> --name "My Game"    make the game on GrowBlocks and link this folder to it
 //   node growblocks.mjs push             check, then upload this folder as a test build; prints its test link
 //   node growblocks.mjs submit           send the test build to GrowBlocks for review
+//   node growblocks.mjs coin             the game's coin (hold a name, link a Mosh Trade launch, see its raise)
 //   node growblocks.mjs mcp              the same, as an MCP server for Claude Code, Cursor and other assistants
+//   node growblocks.mjs pack prop|char <in.glb>   glbinfo <file>   atlas <dir>   blender clean|ao|voxelize|export <file>
+//   node growblocks.mjs blender robot --design example:biped --out robot.glb   a hard-surface robot + turnaround sheet
+//   node growblocks.mjs voxel check|fix|render <model.vox>   voxel art by the voxart kit's rules, with a turnaround sheet
+//   node growblocks.mjs playtest [--shots 3,12] [--click x,y] ...   headless screenshots plus the engine's numbers
+// The asset tools and the playtest live in helper files next to this one (growblocks-assets.mjs, blender/, tools/),
+// fetched once into ~/.growblocks/cache when they are not; their heavy libraries are the developer's own devDependencies.
 //
 // Money never goes through here: collections, coins, earnings and claims stay on growblocks.xyz/devkit.html.
-import fs from 'node:fs';import path from 'node:path';import http from 'node:http';import os from 'node:os';import {spawn} from 'node:child_process';import {fileURLToPath} from 'node:url';
+import fs from 'node:fs';import path from 'node:path';import http from 'node:http';import os from 'node:os';import {spawn} from 'node:child_process';import {fileURLToPath,pathToFileURL} from 'node:url';
 
-const VERSION='1.2.0',DEFAULT_SITE='https://growblocks.xyz';
+const VERSION='1.4.0',DEFAULT_SITE='https://growblocks.xyz';
 const CRED_FILE=path.join(os.homedir(),'.growblocks','credentials.json');
 // The same rules as check.mjs and the server (server/devkit.cjs): what a build may hold, and what stays on your machine.
 const TYPES=['js','mjs','json','css','txt','png','jpg','jpeg','webp','gif','svg','glb','gltf','bin','mp3','ogg','wav','woff2'];
-const SKIP=/^(node_modules|\.git|\.vscode|\.idea|check-screenshot\.png|package-lock\.json)$/;
-const LOCAL_ONLY=new Set(['play.html','check.mjs','package.json','jsconfig.json','gb.d.ts','AGENTS.md','CLAUDE.md','README.md','TERMS.md','llms.txt','growblocks.mjs','growblocks.json','growblocks.key']);
+const SKIP=/^(node_modules|\.git|\.vscode|\.idea|check-screenshot\.png|package-lock\.json|.*\.turnaround\.png)$/;
+const LOCAL_ONLY=new Set(['play.html','check.mjs','package.json','jsconfig.json','gb.d.ts','AGENTS.md','CLAUDE.md','README.md','TERMS.md','llms.txt','growblocks.mjs','growblocks.json','growblocks.key','growblocks-assets.mjs']);
+// Local tools of the starter zip (the playtest harness, the Blender scripts): run on the developer's machine, never uploaded.
+const LOCAL_DIRS=/^(tools|blender)\//;
 const LIMITS={files:200,fileBytes:3000000,buildBytes:30000000};
 // The starter kit: [file in your folder, file on the GrowBlocks site]. Keep in step with src/devkit-portal.js.
 const STARTER=[['game.js','devkit/starter/game.js'],['.gitignore','devkit/starter/gitignore'],['play.html','devkit/starter/play.html'],['AGENTS.md','devkit/starter/AGENTS.md'],['CLAUDE.md','devkit/starter/CLAUDE.md'],
@@ -150,7 +159,7 @@ function buildFiles(dir,{block=false}={}){
  const walk=(d,rel='')=>fs.readdirSync(d,{withFileTypes:true}).flatMap(e=>{if(SKIP.test(e.name)||e.name.startsWith('.'))return [];const r=rel?rel+'/'+e.name:e.name;
   return e.isDirectory()?walk(path.join(d,e.name),r):[r];});
  // A block keeps its block.json; a game ships the blocks it carries (that is how they are found), a block does not.
- const all=walk(dir).filter(f=>!(LOCAL_ONLY.has(f)&&!(block&&f==='block.json'))&&!(block&&f.startsWith('blocks/'))),skipped=all.filter(f=>!TYPES.includes(f.split('.').pop().toLowerCase())),files=all.filter(f=>!skipped.includes(f));
+ const all=walk(dir).filter(f=>!(LOCAL_ONLY.has(f)&&!(block&&f==='block.json'))&&!LOCAL_DIRS.test(f)&&!(block&&f.startsWith('blocks/'))),skipped=all.filter(f=>!TYPES.includes(f.split('.').pop().toLowerCase())),files=all.filter(f=>!skipped.includes(f));
  return {files,skipped};
 }
 function runNode(dir,script,args,{onLine}={}){
@@ -173,9 +182,12 @@ C.push=async(o,out)=>{
  if(!o['no-check']&&fs.existsSync(path.join(dir,'check.mjs'))){out('Checking…');const c=await C.check({...o,play:false},()=>{});if(!c.ok){await C.check({...o,play:false},out);throw fail('The checker found problems: fix them, then push again (or --no-check).','check');}}
  const {files,skipped}=buildFiles(dir);
  for(const f of skipped)out('skip  '+f+' (.'+f.split('.').pop()+' is not uploaded)');
- if(files.length>LIMITS.files)throw fail(files.length+' files: a build is at most '+LIMITS.files+'.','limits');
- const sizes=files.map(f=>fs.statSync(path.join(dir,f)).size),big=files.filter((f,i)=>sizes[i]>LIMITS.fileBytes);
- if(big.length)throw fail('Over 3 MB: '+big.join(', '),'limits');if(sizes.reduce((a,b)=>a+b,0)>LIMITS.buildBytes)throw fail('A build is at most 30 MB.','limits');
+ const sizes=files.map(f=>fs.statSync(path.join(dir,f)).size),total=sizes.reduce((a,b)=>a+b,0);
+ // Over the usual limits: ask the server for this account's (GrowBlocks' own games may be bigger).
+ const L=files.length>LIMITS.files||total>LIMITS.buildBytes?{...LIMITS,...((await api(site,'me').catch(()=>null))?.limits||{})}:LIMITS;
+ if(files.length>L.files)throw fail(files.length+' files: a build is at most '+L.files+'.','limits');
+ const big=files.filter((f,i)=>sizes[i]>L.fileBytes);
+ if(big.length)throw fail('Over 3 MB: '+big.join(', '),'limits');if(total>L.buildBytes)throw fail('A build is at most '+Math.round(L.buildBytes/1e6)+' MB.','limits');
  const {version}=await api(site,'build.start',{slug});out('Uploading '+files.length+' files as '+version+'…');
  const manifest={};
  for(const f of files){const r=await api(site,'build.file',{slug,version,path:f,data:fs.readFileSync(path.join(dir,f)).toString('base64')});manifest[r.path]=r.sha256;out('✓ '+r.path+' ('+Math.max(1,Math.round(r.size/1024))+' KB)');}
@@ -189,6 +201,20 @@ C.push=async(o,out)=>{
 C.submit=async(o,out)=>{
  const dir=projectDir(o),site=siteOf(o,dir),slug=linked(o,dir),r=await api(site,'submit',{slug});
  out(r.status==='review'?'Submitted. GrowBlocks will play it and approve it or send a note (see: node growblocks.mjs status).':'Update submitted. Players keep the current version until GrowBlocks approves it.');return r;
+};
+// The game's coin (SDK 1.13): any game, no plaza. Hold its name and ticker, see where its Mosh Trade raise stands, link a
+// launch the developer made on the GrowBlocks launchpad. Launching itself is signed in the browser (the developer's game
+// wallet): the CLI only prints the link that opens the launchpad with the coin filled in. It never signs anything.
+C.coin=async(o,out)=>{
+ const dir=projectDir(o),site=siteOf(o,dir),slug=linked(o,dir);
+ if(o.name||o.symbol){if(!o.name||!o.symbol)throw fail('Give both: --name "My Coin" --symbol MYC','usage');const r=await api(site,'coin',{slug,name:String(o.name),symbol:String(o.symbol)});out('Held for '+slug+': '+r.coin.name+' ($'+r.coin.symbol+'). Nobody else can launch it.');}
+ if(o.launch!==undefined&&o.launch!==true){const r=await api(site,'coin.link',{slug,launchId:Number(o.launch)});out('Linked launch #'+r.coin.launchId+': '+r.coin.name+' ($'+r.coin.symbol+') is the coin of '+slug+'.');}
+ const t=await getJson(site,'coin='+encodeURIComponent(slug));
+ const words={none:'no coin chosen yet',held:'held, not launched yet',raising:'raise open on Mosh Trade',launching:'curve open',live:'trading',failed:'raise failed (refunds)'};
+ out('Coin: '+(t.name?t.name+' ($'+t.symbol+') · ':'')+(words[t.status]||t.status)+(t.raise&&t.status==='raising'?' · '+t.raise.deposited+' of '+t.raise.target+' ETH ('+t.raise.pct+'%), '+t.raise.funders+' funders':'')+(t.address?' · token '+t.address:''));
+ if(t.status==='none')out('Next: node growblocks.mjs coin --name "My Coin" --symbol MYC');
+ else if(t.status==='held'&&!t.engine)out('Next: launch it on Mosh Trade from your game card (signed with your game wallet): '+site+'/devkit.html  — then it links itself, or: node growblocks.mjs coin --launch <number>');
+ return t;
 };
 // ---- blocks: parts of games other developers published (a kart, a mode, an enemy brain); their authors earn when games ship them ----
 async function getJson(site,q){const r=await fetch(site+'/api/devkit?'+q,{signal:AbortSignal.timeout(30000)}).catch(e=>{throw fail('Could not reach '+site+' ('+(e.cause?.code||e.message)+').','network');});
@@ -273,6 +299,73 @@ C.dev=async(o,out)=>{
  out('Inside GrowBlocks: '+siteOf(o,dir)+'/game.html?dev=http://localhost:'+port+'/game.js');out('Ctrl+C to stop.');
  return {server,port};
 };
+// ---- asset tools and the playtest (helper files: here, or fetched once from the site into ~/.growblocks/cache) ----
+const CLI_DIR=path.dirname(fileURLToPath(import.meta.url));
+async function helper(rel,o){
+ const here=path.join(CLI_DIR,rel);if(fs.existsSync(here))return here;
+ const cached=path.join(os.homedir(),'.growblocks','cache',VERSION,rel);if(fs.existsSync(cached))return cached;
+ const site=siteOf(o,projectDir(o)),r=await fetch(site+'/devkit/starter/'+rel,{signal:AbortSignal.timeout(30000)}).catch(e=>({ok:false,status:e.cause?.code||e.message}));
+ if(!r.ok)throw fail('Could not download '+rel+' from '+site+' ('+r.status+').','network');
+ fs.mkdirSync(path.dirname(cached),{recursive:true});fs.writeFileSync(cached,Buffer.from(await r.arrayBuffer()));return cached;
+}
+const assets=async o=>import(pathToFileURL(await helper('growblocks-assets.mjs',o)).href);
+// An engine kit's pure core, the same file a game gets from gb.use(): the Dev Kit's own copy when the CLI runs from it,
+// else fetched once from the site (src/devkit/kits/) into the cache.
+async function kitCore(file,o){
+ const own=path.join(CLI_DIR,'..','..','src','devkit','kits',file);if(fs.existsSync(own))return import(pathToFileURL(own).href);
+ const cached=path.join(os.homedir(),'.growblocks','cache',VERSION,'kits',file);
+ if(!fs.existsSync(cached)){const site=siteOf(o,projectDir(o)),r=await fetch(site+'/src/devkit/kits/'+file,{signal:AbortSignal.timeout(30000)}).catch(e=>({ok:false,status:e.cause?.code||e.message}));
+  if(!r.ok)throw fail('Could not download '+file+' from '+site+' ('+r.status+').','network');
+  fs.mkdirSync(path.dirname(cached),{recursive:true});fs.writeFileSync(cached,Buffer.from(await r.arrayBuffer()));}
+ return import(pathToFileURL(cached).href);
+}
+// Where the developer's own libraries are looked for: the game folder (and up), where the command runs, beside this CLI.
+const depDirs=o=>[projectDir(o),process.cwd(),CLI_DIR];
+const inDir=(o,f)=>f===undefined||f===true?undefined:path.resolve(projectDir(o),String(f));
+C.pack=async(o,out)=>{
+ const [mode,file]=o._,A=await assets(o);
+ const r=await A.pack(mode,inDir(o,file),inDir(o,o.out),o,out,depDirs(o));
+ const rel=path.relative(projectDir(o),r.out).split(path.sep).join('/');
+ out((rel.startsWith('..')||path.isAbsolute(rel)?'Copy it into your game folder and load it with gb.assets.gltf.':'Load it: const m=await gb.assets.gltf(\''+rel+'\');')+(r.info.clips.length?'  (clips by name: '+r.info.clips.map(c=>c.name).join(', ')+')':''));
+ return {out:r.out,bytes:r.after};
+};
+C.glbinfo=async(o,out)=>{
+ const files=o._.map(f=>inDir(o,f));if(!files.length)throw fail('glbinfo <file.glb> [more.glb ...] [--json]','usage');const A=await assets(o),all=[];
+ for(const f of files){if(!fs.existsSync(f))throw fail('No such file: '+f,'missing');const i=A.glbInfo(fs.readFileSync(f));all.push({file:f,...i});
+  if(o.json)out(JSON.stringify({file:path.basename(f),...i}));else A.describeInfo(path.basename(f),i).forEach(l=>out(l));}
+ return all;
+};
+C.atlas=async(o,out)=>{const A=await assets(o);return A.atlas(inDir(o,o._[0]),{...o,out:inDir(o,o.out)},out,depDirs(o));};
+C.blender=async(o,out)=>{
+ const [op,file]=o._,A=await assets(o);if(!A.BLENDER_OPS[op])throw fail('blender clean|ao|voxelize|export <file> [--out ...] | robot --design example:biped [--out robot.glb]  (see: growblocks help)','usage');
+ const script=await helper('blender/'+A.BLENDER_OPS[op],o);
+ // what the script loads from its own folder (robot: the gb_mech library and the example designs), fetched beside it
+ for(const dep of (A.BLENDER_DEPS||{})[op]||[])await helper('blender/'+dep,o);
+ // robot builds from a design (example:<name>, a .py or a .json in the game folder) instead of reading a model
+ const rel=v=>v===undefined||v===true||/^example:/i.test(String(v))?v:inDir(o,v);
+ const design=op==='robot'?rel(o.design!==undefined&&o.design!==true?o.design:file):undefined;
+ const outFile=inDir(o,o.out)||(op==='robot'&&design?(/^example:/i.test(design)?path.join(projectDir(o),String(design).split(':')[1]+'.glb'):String(design).replace(/\.(py|json)$/i,'')+'.glb'):undefined);
+ return A.blender(op,op==='robot'?design:inDir(o,file),{...o,design,out:outFile},out,path.dirname(script));
+};
+C.voxel=async(o,out)=>{
+ const [op,...files]=o._;if(!['check','fix','render'].includes(op))throw fail('voxel check|fix|render <file.vox|cells.json> [...]  (see: growblocks help)','usage');
+ const A=await assets(o),core=await kitCore('voxart-core.mjs',o);
+ return A.voxel(op,files.map(f=>inDir(o,f)),o,out,core);
+};
+C.playtest=async(o,out)=>{
+ const dir=projectDir(o),script=await helper('tools/playtest.mjs',o),shots=inDir(o,o.out)||path.join(os.tmpdir(),'growblocks-playtest',path.basename(dir)+'-'+Date.now().toString(36));
+ // The steps keep the order they were given in (--click, --drag, --keys, --state, --wait, --shot, --eval).
+ const args=['--dir',dir,'--out',shots];
+ for(const k of ['shots','size','site','port','url'])if(o[k]!==undefined&&o[k]!==true)args.push('--'+k,String(o[k]));
+ for(const k of ['mobile','gpu'])if(o[k])args.push('--'+k);
+ if(o.site===undefined&&projectConfig(dir).site)args.push('--site',siteOf(o,dir));
+ for(const [k,v] of o.__steps||[])args.push('--'+k,...(v===true?[]:[String(v)]));
+ const r=await runNode(dir,script,args,{onLine:out});
+ const report=readJson(path.join(shots,'report.json')),last=report?.shots?.length?path.join(shots,report.shots.at(-1)):null;
+ return {ok:r.code===0,report,shot:last&&fs.existsSync(last)?last:null,dir:shots};
+};
+const STEP_KEYS=['click','drag','keys','state','wait','shot','eval'];
+const stepsOf=argv=>{const s=[];for(let i=0;i<argv.length;i++){const k=argv[i].replace(/^--/,'');if(!argv[i].startsWith('--')||!STEP_KEYS.includes(k))continue;const v=argv[i+1]!==undefined&&!argv[i+1].startsWith('--')?argv[++i]:true;s.push([k,v]);}return s;};
 C.docs=async(o,out)=>{
  const dir=projectDir(o),local=path.join(dir,'llms.txt');
  let text=fs.existsSync(local)?fs.readFileSync(local,'utf8'):null;
@@ -299,19 +392,32 @@ const TOOLS=[
  {name:'growblocks_update_game',cmd:'update',description:"Change the linked game's name, tagline, description, studio (the name shown after \"by\"; empty = the developer's account name), players per room or logo.",inputSchema:S({name:{type:'string'},studio:{type:'string'},tagline:{type:'string'},description:{type:'string'},players:{type:'number'},logo:{type:'string',description:'Path to a WebP logo.'}})},
  {name:'growblocks_push',cmd:'push',description:'Run the static checks, then upload the folder as a new test build of the linked game. Returns the unlisted test link to play and share. Does not make anything public. At most 20 uploads per game a day, so push when a change is worth testing.',inputSchema:S()},
  {name:'growblocks_submit',cmd:'submit',description:'Submit the latest test build to GrowBlocks for review (needs a logo and a description). Only do this when the human asks: GrowBlocks plays it and approves it or sends a note.',inputSchema:S()},
+ {name:'growblocks_coin',cmd:'coin',description:"The game's coin (any game, no plaza needed): with no arguments its status (none, held, raising on Mosh Trade with the raise's progress, launching, live, failed). name + symbol hold a name and ticker for the game. launch (a number) links a launch the human made on the GrowBlocks launchpad (checked on chain: theirs, carrying the held name). Launching itself is done by the human in the browser, from the game's card on devkit.html (Launch on Mosh Trade): never ask for keys or sign anything.",inputSchema:S({name:{type:'string'},symbol:{type:'string'},launch:{type:'number'}})},
  {name:'growblocks_blocks',cmd:'blocks',description:'Search the GrowBlocks blocks: parts of games other developers published (vehicles, game modes, enemy brains, level kits) that a game can add instead of writing them. Look here before building something common. Pass words to search names, descriptions and tags.',inputSchema:S({query:{type:'string'}})},
  {name:'growblocks_block_info',cmd:'block',sub:'info',description:'One block: what it does, its versions (and what it forked), its entry file and which live games use it.',inputSchema:S({block:{type:'string'}},['block'])},
  {name:'growblocks_add_block',cmd:'add',description:'Add a block to the game: copies its files into blocks/<slug>/ and records it in growblocks.json. Then import it from ./blocks/<slug>/<entry> and read its code for how to use it. Do not edit the block files: GrowBlocks recognises the block by them and its author earns from the game (paid by GrowBlocks; the game keeps its 70%). To change one, publish a fork.',inputSchema:S({block:{type:'string',description:'slug or slug@version'}},['block'])},
  {name:'growblocks_publish_block',cmd:'block',sub:'publish',description:'Publish the folder as a block. It needs block.json (slug, name, description, entry, tags, and forkOf if it started from another block). Others can then add it, and its author earns from every live game that ships it. Only when the human asks.',inputSchema:S()},
+ {name:'growblocks_pack',cmd:'pack',pos:['mode','file'],description:'Make a 3D model game-ready (needs, in the game folder: npm i -D @gltf-transform/core @gltf-transform/extensions @gltf-transform/functions meshoptimizer sharp). mode "prop": dedup, prune, WebP textures (tex, default 512), Meshopt; tris or simplify cut triangles. mode "char": a rigged character, with clips (comma list of other GLBs of the same rig, merged by bone name, Name=file.glb to name one), textures 1024, Meshopt without position quantisation (it breaks skinned meshes). fix_winding flips inside-out meshes (dark in game) and smooths normals. Writes <name>.packed.glb unless out is given; prints sizes and how to load it.',
+  inputSchema:S({mode:{type:'string',enum:['prop','char']},file:{type:'string'},out:{type:'string'},clips:{type:'string'},tex:{type:'number'},tris:{type:'number',description:'Triangle budget.'},simplify:{type:'number',description:'Triangle ratio 0-1.'},fix_winding:{type:'boolean'},base_color_only:{type:'boolean'},keep_textures:{type:'boolean'},no_meshopt:{type:'boolean'}},['mode','file'])},
+ {name:'growblocks_glbinfo',cmd:'glbinfo',pos:['file'],description:'What a GLB holds: triangles (and drawn, with instancing), vertices, draw calls, materials (with baked-lightmap roles), textures with sizes and bytes, skins, clips with lengths, compression; with warnings for the GrowBlocks limits (3 MB a file, Draco/KTX2 not supported, huge textures). No dependencies.',inputSchema:S({file:{type:'string'}},['file'])},
+ {name:'growblocks_atlas',cmd:'atlas',pos:['icons'],description:'Put a folder of icon images into one WebP sheet plus a JSON map {icons:{name:[x,y,w,h]}} (a build holds at most 200 files). cell: px per icon (128); cols; key=true keys out a plain background. Needs sharp (npm i -D sharp).',inputSchema:S({icons:{type:'string',description:'The folder of icons.'},out:{type:'string'},cell:{type:'number'},cols:{type:'number'},key:{type:'boolean'}},['icons'])},
+ {name:'growblocks_blender',cmd:'blender',pos:['op','file'],description:'Run headless Blender (found via BLENDER or the usual install paths) with a GrowBlocks script. op "clean": a generated prop joined, decimated (tris), scaled (size in m along axis), pivot bottom/top/center, textures shrunk (tex). "ao": ambient occlusion baked into vertex colours (dist, rays). "voxelize": cells JSON (cell size, by material|object|kind). "export": a .blend to GLB with every action as a clip and custom properties as extras. "robot": builds a hard-surface robot or mech (bevelled curved armour shells with real panel gaps, drums, pistons, hoses, vents, one locked palette, AO + edge wear in vertex colours) from a design: file = "example:biped", "example:spider", a .py with build(kit) using the gb_mech library (copy an example from blender/) or a .json preset ({"design","palette","colors","params"}); joints are named nodes (pelvis/torso/head, shoulder/elbow/hand/muzzle L+R, hip/knee/ankle/toe L+R, jet0/1; walkers leg/knee/ankle/toe<i>) that animate by rotation and pair with gb.use("gait"). It returns the turnaround sheet (front, 3/4, side, back, close-up, test pose): look at it, fix the design, run again. options: palette (warden|raptor|olive|carbon|pearl), budget (triangles), param ("k=v,k=v"), merge 0 (one mesh per piece). Then growblocks_pack.',
+  inputSchema:S({op:{type:'string',enum:['clean','ao','voxelize','export','robot']},file:{type:'string',description:'The model or .blend; for robot the design (example:biped, example:spider, my_robot.py, preset.json).'},out:{type:'string'},options:{type:'object',description:'Script options, e.g. {"pivot":"bottom","size":1.8,"tris":5000}, {"cell":0.5} or for robot {"palette":"olive","budget":12000,"param":"pod=0"}.'}},['op','file'])},
+ {name:'growblocks_voxel',cmd:'voxel',pos:['op','file'],description:'Voxel art by the voxart kit rules (gb.use("voxart"): one locked palette of hue-shifted ramps, the rules every GrowBlocks voxel model is held to). file: a .vox (MagicaVoxel, Scenario Voxels, the toVox() of your generator) or the cells JSON of growblocks_blender voxelize with by "color" (a Meshy/Tripo GLB as voxels). op "check": score 0-100 and the issues (colours, floating pieces, glow share, symmetry for kind "character", speckle, thin tips, voxel budget, readability at 96 px). "fix": snaps to the palette, caps colours, drops floating bits, fills pinholes, cleans speckle (mirror left|right, size "64" or "48x64x32" to resample), writes <name>.fixed.vox. "render": the turnaround sheet. fix and render return the sheet image (front, side, top, three-quarter, 96 px thumb): look at it, change the generator or the options, run again.',
+  inputSchema:S({op:{type:'string',enum:['check','fix','render']},file:{type:'string'},out:{type:'string'},kind:{type:'string',enum:['character','prop','building']},colours:{type:'number',description:'Most colours to keep (the style allows 24).'},mirror:{type:'string',enum:['left','right']},size:{type:'string',description:'Resample to "64" or "48x64x32" voxels.'},px:{type:'number',description:'View size in px (384).'}},['op','file'])},
+ {name:'growblocks_playtest',cmd:'playtest',description:'Play the game headless (like growblocks_check with play) with scripted input, and get screenshots over time plus the engine\'s own numbers each second (fps, draw calls, triangles from window.__gbtest). steps: e.g. "click 0.5,0.85; keys KeyW:1500,Space; drag 0.2,0.5>0.6,0.5; state boss; wait 2000" (positions under 1 are a share of the screen; state = a gb.dev.states name). shots: seconds to screenshot at ("3,12"). Returns the summary and the last screenshot; all shots and report.json are in a temp folder it names.',
+  inputSchema:S({steps:{type:'string'},shots:{type:'string'},size:{type:'string',description:'WxH, default 1280x800.'},mobile:{type:'boolean'},gpu:{type:'boolean'}})},
  {name:'growblocks_new_game',cmd:'new',description:'Create a new game folder from the latest starter kit (game.js, play.html, check.mjs, llms.txt, gb.d.ts, this CLI and .mcp.json). Then pass that folder as dir to the other tools.',inputSchema:{type:'object',properties:{folder:{type:'string'}},required:['folder']}}
 ];
 // What each tool does to the world, for the assistant's approval prompts and MCP directories: [title, readOnly, destructive, idempotent, openWorld].
 const ANN={growblocks_docs:['Read the Dev Kit API',1,0,1,0],growblocks_check:['Check and play the game',1,0,1,0],growblocks_whoami:['Who is signed in',1,0,1,1],
  growblocks_login:['Sign in to GrowBlocks',0,0,1,1],growblocks_games:['List my games',1,0,1,1],growblocks_status:['Game status and review note',1,0,1,1],
  growblocks_create_game:['Create a game on GrowBlocks',0,0,0,1],growblocks_link_game:['Link folder to a game',0,0,1,1],growblocks_update_game:['Change game details',0,1,1,1],
- growblocks_push:['Upload a test build',0,0,0,1],growblocks_submit:['Submit for review',0,0,0,1],growblocks_blocks:['Search blocks',1,0,1,1],
+ growblocks_push:['Upload a test build',0,0,0,1],growblocks_submit:['Submit for review',0,0,0,1],growblocks_coin:["The game's coin",0,0,1,1],growblocks_blocks:['Search blocks',1,0,1,1],
  growblocks_block_info:['Block details',1,0,1,1],growblocks_add_block:['Add a block to the game',0,1,1,1],growblocks_publish_block:['Publish a block publicly',0,0,0,1],
- growblocks_new_game:['New game folder',0,0,0,1]};
+ growblocks_new_game:['New game folder',0,0,0,1],
+ growblocks_pack:['Pack a 3D model',0,0,1,0],growblocks_glbinfo:['Inspect a GLB',1,0,1,0],growblocks_atlas:['Build an icon sheet',0,0,1,0],
+ growblocks_blender:['Run headless Blender',0,0,1,0],growblocks_voxel:['Check, fix or render voxel art',0,0,1,0],growblocks_playtest:['Playtest headless',1,0,0,0]};
 for(const t of TOOLS){const [title,r,d,i,w]=ANN[t.name];t.annotations={title,readOnlyHint:!!r,destructiveHint:!!d,idempotentHint:!!i,openWorldHint:!!w};}
 // The commands' hints name CLI commands; an assistant should call the tools instead.
 const HINT={login:'growblocks_login',push:'growblocks_push',submit:'growblocks_submit',status:'growblocks_status',create:'growblocks_create_game',link:'growblocks_link_game',
@@ -349,6 +455,11 @@ async function mcp(){
  const call=async(name,args={})=>{
   const tool=TOOLS.find(t=>t.name===name);if(!tool)throw fail('Unknown tool '+name,'tool');
   const o={_:[],mcp:true,...args};if(args.address)o._=[args.address];if(args.block)o._=[args.block];if(args.query)o._=[args.query];if(tool.sub)o._=[tool.sub,...o._];if(args.folder)o._=[path.resolve(process.cwd(),args.folder)];if(args.topic)o._=[args.topic];
+  // The asset tools: positional arguments by name, snake_case options as the CLI's --kebab-case, blender's script options.
+  if(tool.pos)o._=tool.pos.map(k=>args[k]).filter(v=>v!==undefined&&v!==null).map(String);
+  for(const [k,v] of Object.entries(args))if(k.includes('_'))o[k.replace(/_/g,'-')]=v;
+  if(tool.cmd==='blender'&&args.options&&typeof args.options==='object')for(const [k,v] of Object.entries(args.options))if(!(k in o))o[k]=v;
+  if(tool.cmd==='playtest'&&args.steps)o.__steps=String(args.steps).split(';').map(s=>s.trim()).filter(Boolean).map(s=>{const [k,...v]=s.split(/\s+/);return [k.replace(/^--/,''),v.length?v.join(' '):true];}).filter(([k])=>STEP_KEYS.includes(k));
   const lines=[],out=l=>lines.push(String(l));const content=[];
   if(tool.cmd==='login'){
    const site=siteOf(o,projectDir(o));if(tokenFor(site)){const me=await api(site,'me').catch(()=>null);if(me)return [{type:'text',text:'Already signed in as '+me.name+' on '+site+'.'}];}
@@ -357,6 +468,9 @@ async function mcp(){
   }
   const r=await C[tool.cmd](o,out);
   content.push({type:'text',text:toolHints(lines.join('\n'))||'Done.'});
+  if(tool.cmd==='blender'&&r&&r.sheet&&fs.existsSync(r.sheet))content.push({type:'image',data:fs.readFileSync(r.sheet).toString('base64'),mimeType:'image/png'});
+  if(tool.cmd==='voxel')for(const x of r)if(x.sheet)content.push({type:'image',data:fs.readFileSync(x.sheet).toString('base64'),mimeType:'image/png'});
+  if(tool.cmd==='playtest'&&r.shot)content.push({type:'image',data:fs.readFileSync(r.shot).toString('base64'),mimeType:'image/jpeg'});
   if(tool.cmd==='check'){content[0].text=(r.ok?'PASSED\n':'FAILED\n')+content[0].text;if(r.screenshot)content.push({type:'image',data:fs.readFileSync(r.screenshot).toString('base64'),mimeType:'image/png'});}
   return content;
  };
@@ -411,11 +525,26 @@ const HELP=`GrowBlocks CLI ${VERSION}: build, check and ship Dev Kit games.
   update [--name ..] [--tagline ..] [--description ..] [--studio ..] [--players ..] [--logo logo.webp]
   push [--no-check] [--open]  upload this folder as a test build; prints the test link
   submit                    send the test build to GrowBlocks for review
+  coin [--name N --symbol S] [--launch #]   the game's coin: status, hold a name, link a Mosh Trade launch
   status | open [--live]    this game's status | open its test (or live) link
   blocks [words]            search blocks: parts of games others published (a kart, a mode, an enemy brain)
   add <block>[@version]     add a block to this game (into blocks/<block>/); its author earns from your game
   block init <address> [--fork slug@version] | block publish | block status | block info <block>
   mcp                       run as an MCP server (Claude Code, Cursor...): see .mcp.json
+
+Assets (needs: npm i -D @gltf-transform/core @gltf-transform/extensions @gltf-transform/functions meshoptimizer sharp):
+  pack prop <in.glb> [--out x.glb] [--tex 512] [--tris 5000 | --simplify 0.5] [--fix-winding] [--keep-textures] [--no-meshopt]
+  pack char <in.glb> [--clips walk.glb,Run=run.glb] [--tex 1024] [--base-color-only]   clips merged by bone name
+  glbinfo <file.glb> [--json]   triangles, materials, textures, skins, clips, sizes (no dependencies)
+  atlas <folder> [--out icons.webp] [--cell 128] [--cols 8] [--key]   icons in one sheet + a JSON map
+  blender clean|ao|voxelize|export <file> [--out ..]   headless Blender (BLENDER=path, or found)
+    clean: --pivot bottom --size 1.8 --axis max --tris 5000 --tex 1024   ao: --dist 2.5 --rays 20   voxelize: --cell 0.5 --by material
+  blender robot --design example:biped|example:spider|my_robot.py|preset.json [--out robot.glb] [--palette warden|raptor|olive|carbon|pearl]
+           [--budget 12000] [--param k=v,k=v] [--merge 0] [--no-sheet]   a jointed hard-surface robot + <out>.turnaround.png to look at
+  voxel check|fix|render <model.vox|cells.json> [--kind character|prop|building] [--colours 24] [--mirror left]
+           [--size 64 | 48x64x32] [--out x] [--json]   voxel art by the voxart kit's rules; fix/render write a sheet PNG
+  playtest [--shots 3,12] [--size 1280x800] [--mobile] [--gpu] [--click x,y] [--drag x,y>x,y] [--keys KeyW:1500,Space]
+           [--state name] [--wait ms] [--eval expr]   headless play: screenshots + fps, draw calls, triangles
 
 Options: --dir <folder>  --site <url>   Env: GROWBLOCKS_SITE, GROWBLOCKS_TOKEN
 Docs: ${DEFAULT_SITE}/devkit.html`;
@@ -424,8 +553,9 @@ async function main(){
  if(!cmd||cmd==='help'||cmd==='--help'||cmd==='-h'){console.log(HELP);return;}
  if(cmd==='--version'||cmd==='version'){console.log(VERSION);return;}
  if(cmd==='mcp')return mcp();
+ if(cmd==='playtest')o.__steps=stepsOf(rest);
  if(!C[cmd]){console.error('Unknown command: '+cmd+'\n\n'+HELP);process.exit(2);}
- try{const r=await C[cmd](o,l=>console.log(l));if(cmd==='check'&&!r.ok)process.exit(1);}
+ try{const r=await C[cmd](o,l=>console.log(l));if((cmd==='check'||cmd==='playtest')&&!r.ok)process.exit(1);}
  catch(e){console.error((e.user?'':'Error: ')+e.message);process.exit(1);}
 }
 // Run as a command (node growblocks.mjs ...), not when a test imports it.
@@ -433,4 +563,4 @@ async function main(){
 const real=p=>{try{return fs.realpathSync(p).toLowerCase();}catch{return path.resolve(p).toLowerCase();}};
 const self=!!process.argv[1]&&real(process.argv[1])===real(fileURLToPath(import.meta.url));
 if(self)main();
-export {C as commands,TOOLS,buildFiles,parseArgs,VERSION};
+export {C as commands,TOOLS,buildFiles,parseArgs,stepsOf,VERSION};

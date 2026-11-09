@@ -2,7 +2,7 @@
  "manifest_version": "0.3",
  "name": "growblocks",
  "display_name": "GrowBlocks Dev Kit",
- "version": "1.2.0",
+ "version": "1.4.0",
  "description": "Build, play-test with screenshots, and ship three.js browser games on GrowBlocks.",
  "long_description": "Write a GrowBlocks game with Claude: read the Dev Kit API, play the game headless and see a screenshot after every change, reuse community blocks, and push an unlisted test build. Submitting for review only happens when you ask.",
  "author": {
@@ -88,6 +88,34 @@
   {
    "name": "growblocks_new_game",
    "description": "New game folder"
+  },
+  {
+   "name": "growblocks_playtest",
+   "description": "Playtest headless with scripted input"
+  },
+  {
+   "name": "growblocks_coin",
+   "description": "The game's coin on Mosh Trade"
+  },
+  {
+   "name": "growblocks_pack",
+   "description": "Pack a 3D model"
+  },
+  {
+   "name": "growblocks_glbinfo",
+   "description": "Inspect a GLB"
+  },
+  {
+   "name": "growblocks_atlas",
+   "description": "Build an icon sheet"
+  },
+  {
+   "name": "growblocks_blender",
+   "description": "Run headless Blender"
+  },
+  {
+   "name": "growblocks_voxel",
+   "description": "Check, fix or render voxel art"
   }
  ],
  "prompts": [

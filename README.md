@@ -39,6 +39,10 @@ Then ask: *"Make me a GrowBlocks game where frogs race across lily pads"*, or us
 | `growblocks_login`, `growblocks_whoami` | Sign in with a code you confirm in your browser |
 | `growblocks_create_game`, `growblocks_link_game`, `growblocks_update_game` | Make the game on GrowBlocks and set its name, logo and details |
 | `growblocks_push` | Upload an unlisted test build and get its link |
+| `growblocks_playtest` | Plays the game headless with scripted input: screenshots over time plus fps, draw calls and triangles |
+| `growblocks_coin` | The game's coin on Mosh Trade: hold a name and ticker, see the raise, open the launch |
+| `growblocks_pack`, `growblocks_glbinfo`, `growblocks_atlas` | Make a 3D model game-ready, inspect a GLB, build an icon sheet |
+| `growblocks_blender`, `growblocks_voxel` | Headless Blender scripts (clean a prop, build a robot), voxel art checked and rendered on the GrowBlocks palette |
 | `growblocks_status`, `growblocks_games` | Builds, links and the review note |
 | `growblocks_submit`, `growblocks_publish_block` | Only when you ask: submit for review, publish a block |
 
